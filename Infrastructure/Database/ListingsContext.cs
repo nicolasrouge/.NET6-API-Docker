@@ -7,7 +7,6 @@ namespace listingapi.Infrastructure.Database
     {
         public ListingsContext(DbContextOptions<ListingsContext> options) : base(options)
         {
-
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -16,9 +15,7 @@ namespace listingapi.Infrastructure.Database
                 .HasOne(p => p.Listing)
                 .WithMany()
                 .HasForeignKey(p => p.ListingId);
-
         }
-
 
         public virtual DbSet<Listing> Listings { get; set; }
         public virtual DbSet<ListingPriceHistory> ListingPriceHistories { get; set; }

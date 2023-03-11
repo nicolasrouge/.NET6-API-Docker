@@ -1,15 +1,15 @@
+using listingapi.Infrastructure.Database;
+using listingapi.Models;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using listingapi.Infrastructure.Database;
-using listingapi.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using listingapi.Infrastructure.Database.Models;
 using Listing = listingapi.Models.Listing;
+using ListingPriceHistory = listingapi.Infrastructure.Database.Models.ListingPriceHistory;
 
 namespace listingapi.Controllers
 {
@@ -17,6 +17,7 @@ namespace listingapi.Controllers
     public class ListingsController : ControllerBase
     {
         #region Properties
+
         private readonly ListingsContext _listingsContext;
         private readonly ILogger<ListingsController> _logger;
 
@@ -25,7 +26,8 @@ namespace listingapi.Controllers
             _logger = logger;
             _listingsContext = listingsContext;
         }
-        #endregion
+
+        #endregion Properties
 
         /// <summary>
         /// Get all the listings registered in the app
@@ -53,6 +55,7 @@ namespace listingapi.Controllers
                 return StatusCode(500);
             }
         }
+
         /// <summary>
         /// Create a listing
         /// </summary>
@@ -65,7 +68,7 @@ namespace listingapi.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> PostListingAsync([FromBody] Listing listing, CancellationToken cancellationToken)
         {
-            if (listing == null || listing.PostalAddress == null)
+            if (listing?.PostalAddress == null)
                 return BadRequest();
             try
             {
@@ -112,7 +115,7 @@ namespace listingapi.Controllers
         [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<IActionResult> PutListingAsync(int id, [FromBody] Models.Listing listing, CancellationToken cancellationToken)
         {
-            if (id <= 0 || listing == null || listing.PostalAddress == null)
+            if (id <= 0 || listing?.PostalAddress == null)
                 return BadRequest();
 
             try
@@ -122,15 +125,14 @@ namespace listingapi.Controllers
                     .FirstOrDefault(l => l.Id == id);
                 if (result == null) return NotFound();
 
-                //Save legacy price
-
-
                 // Update listing
-                var priceDate = DateTime.Now;
+                var localDateTime = DateTime.Now;
+                var utcDateTime = localDateTime.ToUniversalTime();
+                result.UpdatedDate = utcDateTime;
+                result.CreatedDate = result.CreatedDate.ToUniversalTime();
                 result.BedroomsCount = listing.BedroomsCount;
                 result.BuildingType = listing.BuildingType.ToString();
                 result.ContactPhoneNumber = listing.ContactPhoneNumber;
-                result.UpdatedDate = DateTime.Now;
                 result.Name = listing.Name;
                 result.Description = listing.Description;
                 result.Price = listing.LatestPriceEur;
@@ -142,6 +144,12 @@ namespace listingapi.Controllers
                 result.StreetAddress = listing.PostalAddress.StreetAddress;
                 _listingsContext.Listings.Update(result);
                 await _listingsContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+                //Save price History
+                var historyPriceToSave = new Infrastructure.Database.Models.ListingPriceHistory { ListingId = result.Id, PriceDate = utcDateTime, Price = listing.LatestPriceEur };
+                _listingsContext.ListingPriceHistories.Add(historyPriceToSave);
+                await _listingsContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
                 return Ok(MapListing(result));
             }
             catch (Exception ex)
@@ -171,12 +179,12 @@ namespace listingapi.Controllers
                 if (!listingPriceHistories.Any()) return NotFound();
 
                 var results = listingPriceHistories.Select(listingPriceHistory => MapListingPriceHistory(listingPriceHistory)).ToList();
-                
+
                 return Ok(results);
             }
             catch (Exception e)
             {
-                _logger.LogError($"GetListingsAsync. Error : {e}");
+                _logger.LogError($"GetListingPriceHistory. Error : {e}");
                 return StatusCode(500);
             }
         }
@@ -213,7 +221,6 @@ namespace listingapi.Controllers
         {
             return new ListingPriceHistoriesReadOnly
             {
-                //Listing = listingPriceHistories,
                 ListingId = listingPriceHistories.ListingId,
                 Price = listingPriceHistories.Price,
                 PriceDate = listingPriceHistories.PriceDate
